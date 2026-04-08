@@ -146,42 +146,39 @@ def evaluate(splitnn, test_set):
 
 # 训练循环
 total_start_time = time.time()
+total_train_time = 0.0
+total_eval_time = 0.0
+global_step = 0
+EVAL_EVERY_STEPS = 10  # 每10个step测试一次
 
 for epoch in range(EPOCHS):
-    epoch_start_time = time.time()
-    
     # 随机更新子集和参与者选择
     if random.random() < SUBSET_UPDATE_PROB:
         distributed_trainloader.generate_subdata()
         splitNN.group_testing(n_tests=N_TESTS)
     
     # 训练
-    running_loss = 0.0
-    batch_count = 0
     for _, data_ptr, label in distributed_trainloader.distributed_subdata:
+        step_start_time = time.time()
+        
         # 发送标签到服务器
         label = label.send(server)
         
         # 训练
         loss = splitNN.train(data_ptr, label)
-        running_loss += loss
-        batch_count += 1
-    
-    epoch_time = time.time() - epoch_start_time
-    
-    # 打印损失和时间
-    if batch_count > 0:
-        avg_loss = running_loss / batch_count
-        print(f"Epoch {epoch+1}/{EPOCHS} - Loss: {avg_loss:.4f} - Time: {epoch_time:.2f}s")
-    
-    # 每10个epoch测试一次accuracy
-    if (epoch + 1) % 10 == 0:
-        print(f"\n--- Evaluating at Epoch {epoch+1} ---")
-        eval_start = time.time()
-        accuracy = evaluate(splitNN, distributed_trainloader.test_set)
-        eval_time = time.time() - eval_start
-        print(f"Test Accuracy: {accuracy*100:.2f}% - Eval Time: {eval_time:.2f}s")
-        print("-" * 40)
+        global_step += 1
+        
+        step_time = time.time() - step_start_time
+        total_train_time += step_time
+        
+        # 每10个step测试一次并打印
+        if global_step % EVAL_EVERY_STEPS == 0:
+            eval_start = time.time()
+            accuracy = evaluate(splitNN, distributed_trainloader.test_set)
+            eval_time = time.time() - eval_start
+            total_eval_time += eval_time
+            
+            print(f"Step {global_step} | Epoch {epoch+1} | Loss: {loss:.4f} | Train Time: {total_train_time:.2f}s | Test Acc: {accuracy*100:.2f}% | Eval Time: {eval_time:.2f}s")
 
 total_time = time.time() - total_start_time
 
@@ -190,5 +187,10 @@ print("\n" + "=" * 60)
 print("Final Evaluation...")
 accuracy = evaluate(splitNN, distributed_trainloader.test_set)
 print(f"Final Test Accuracy: {accuracy*100:.2f}%")
-print(f"Total Training Time: {total_time:.2f}s ({total_time/60:.2f} min)")
+print(f"Total Training Time: {total_train_time:.2f}s ({total_train_time/60:.2f} min)")
+print(f"Total Eval Time: {total_eval_time:.2f}s ({total_eval_time/60:.2f} min)")
+print(f"Total Time: {total_time:.2f}s ({total_time/60:.2f} min)")
+print(f"Total Steps: {global_step}")
+print("=" * 60)
+print(f"Total Steps: {global_step}")
 print("=" * 60)

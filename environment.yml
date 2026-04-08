@@ -1,4 +1,4 @@
-name: fvps
+name: vfps
 channels:
   - conda-forge
   - pytorch
