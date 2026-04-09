@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-Dynamic-VFPS GPU 测试脚本
-基于互信息的垂直联邦学习动态参与者选择
+Dynamic-VFPS GPU Test Script
+MI-based Dynamic Participant Selection for Vertical Federated Learning
 
-运行方式:
-    python test_gpu.py                                    # 默认参数
-    python test_gpu.py --epochs 50 --clients 10          # 自定义参数
-    python test_gpu.py --encryption paillier             # 使用 Paillier 加密
-    python test_gpu.py --help                            # 查看所有参数
+Usage:
+    python test_gpu.py                                    # default parameters
+    python test_gpu.py --epochs 50 --clients 10          # custom parameters
+    python test_gpu.py --encryption paillier             # use Paillier encryption
+    python test_gpu.py --mi-mode static                  # static client selection
+    python test_gpu.py --help                            # show all parameters
 """
 
 import sys
@@ -22,7 +23,6 @@ import argparse
 import math
 import numpy as np
 
-from src.transmission import get_transmission
 from src.models.split_resnet import SplitResNet18
 
 
@@ -31,45 +31,46 @@ from src.models.split_resnet import SplitResNet18
 # =============================================================================
 
 class Config:
-    """训练配置"""
+    """Training configuration"""
     def __init__(self):
-        # 训练参数
+        # Training parameters
         self.epochs = 50
         self.learning_rate = 0.001
         self.batch_size = 256
-        self.local_epochs = 1  # 本地迭代次数
+        self.local_epochs = 1  # Local iterations per batch
         self.subset_update_prob = 0.2
         
-        # 客户端参数
+        # Client parameters
         self.n_clients = 10
         self.n_selected = 6
         
-        # 互信息估计参数
+        # Mutual information estimation parameters
         self.n_tests = 5
         self.k_nn = 3
         
-        # 通信参数
+        # Communication parameters
         self.bandwidth_mbps = 300
         self.padding_method = "zeros"
         
-        # 加密方法
+        # Encryption method
         self.encryption = "plaintext"
         
-        # 模型参数
+        # Model parameters
         self.feature_dim = 256
         self.hidden_dim = 128
         self.num_classes = 10
         
-        # 评估参数
+        # Evaluation parameters
         self.eval_every_steps = 10
-        self.test_set_size = 50
         self.estimate_samples = 50
     
     @classmethod
     def from_args(cls, args):
-        """从命令行参数创建配置"""
+        """Create configuration from command line arguments"""
         config = cls()
         config.epochs = args.epochs
+        config.learning_rate = args.lr
+        config.batch_size = args.batch_size
         config.local_epochs = args.local_epochs
         config.n_clients = args.clients
         config.n_selected = args.selected
@@ -105,31 +106,31 @@ def get_device():
 
 
 # =============================================================================
-# 通信时间估算器
+# Communication Time Estimator
 # =============================================================================
 
 class CommunicationEstimator:
-    """通信时间估算器
+    """Communication time estimator
     
-    用 dict 缓存不同张量大小的加密结果：
+    Uses dict to cache encryption results for different tensor sizes:
         {tensor_numel: (encrypt_time, ciphertext_bytes)}
     
-    首次遇到某个大小时进行 profiler 测量，后续直接查表返回
+    Performs profiler measurement when encountering a size for the first time,
+    then returns cached values for subsequent requests.
     """
     
     def __init__(self, bandwidth_mbps: float = 300, encryption: str = 'plaintext'):
         self.bandwidth_bps = bandwidth_mbps * 1e6
         self.encryption = encryption
         
-        # 缓存: {tensor_numel: (encrypt_time, ciphertext_bytes)}
+        # Cache: {tensor_numel: (encrypt_time, ciphertext_bytes)}
         self._profile_cache = {}
         
-        # 累计统计
-        self.total_time = 0.0
+        # Accumulated data volume
         self.total_bytes = 0
     
     def _profile_encrypt(self, numel: int) -> tuple:
-        """测量加密基准，返回 (encrypt_time, ciphertext_bytes)"""
+        """Measure encryption baseline, returns (encrypt_time, ciphertext_bytes)"""
         if numel in self._profile_cache:
             return self._profile_cache[numel]
         
@@ -199,10 +200,10 @@ class CommunicationEstimator:
         return encrypt_time, ciphertext_bytes
     
     def estimate_encrypted(self, tensor: torch.Tensor) -> float:
-        """估算加密传输时间（客户端选择阶段）
+        """Estimate encrypted transmission time (client selection phase)
         
         Returns:
-            加密时间 + 膨胀后的通信时间
+            encryption_time + expanded_communication_time
         """
         numel = tensor.numel()
         encrypt_time, ciphertext_bytes = self._profile_encrypt(numel)
@@ -216,10 +217,10 @@ class CommunicationEstimator:
         return encrypt_time + transfer_time
     
     def estimate_plaintext(self, tensor: torch.Tensor) -> float:
-        """估算明文传输时间（模型训练阶段）
+        """Estimate plaintext transmission time (model training phase)
         
         Returns:
-            明文通信时间
+            plaintext_communication_time
         """
         numel = tensor.numel()
         plaintext_bytes = numel * tensor.element_size()
@@ -232,29 +233,21 @@ class CommunicationEstimator:
         
         return transfer_time
     
-    def add_time(self, t: float):
-        """累加时间"""
-        self.total_time += t
-    
     @property
     def total_data_mb(self) -> float:
         return self.total_bytes / (1024 * 1024)
-    
-    def reset(self):
-        self.total_time = 0.0
-        self.total_bytes = 0
 
 
 # =============================================================================
-# 数据分发器
+# Data Distributor
 # =============================================================================
 
 class DataDistributor:
-    """垂直联邦学习数据分发器
+    """Data distributor for vertical federated learning
     
-    参考 vflweight 的设计：按列分割
-    - 每个客户端收到 28x(width) 的图像
-    - 高度固定为 28，宽度可变
+    Based on vflweight design: column-wise split
+    - Each client receives 28x(width) image
+    - Height fixed at 28, width variable
     """
     
     def __init__(self, n_clients: int, data_loader, device, test_loader=None):
@@ -326,17 +319,16 @@ class DataDistributor:
 
 
 # =============================================================================
-# 带互信息估计的 SplitNN
+# SplitNN Model
 # =============================================================================
 
 class SplitNN:
-    """垂直联邦学习分割神经网络，支持基于互信息的动态客户端选择"""
+    """Split neural network for vertical federated learning with MI-based dynamic client selection"""
     
-    def __init__(self, models, config, optimizers, transmission, comm_estimator, device):
+    def __init__(self, models, config, optimizers, comm_estimator, device):
         self.models = models
         self.config = config
         self.optimizers = optimizers
-        self.transmission = transmission
         self.comm_estimator = comm_estimator
         self.device = device
         
@@ -346,15 +338,15 @@ class SplitNN:
         # MI 估计相关
         self.scores = {}
         
-        # Padding 缓存
+        # Padding cache
         self.latest = {}
     
     # -------------------------------------------------------------------------
-    # 前向传播
+    # Forward Propagation
     # -------------------------------------------------------------------------
     
     def predict(self, data_ptr):
-        """前向传播（明文传输，用于模型训练阶段）
+        """Forward propagation (plaintext transmission, for model training phase)
         
         Returns:
             (pred, comm_time, client_outputs): 
@@ -379,10 +371,10 @@ class SplitNN:
                 # 保存输出（用于后续梯度传输估算）
                 client_outputs.append(output)
                 
-                # 更新 padding 缓存
+                # Update padding cache
                 self._update_padding_cache(client_id, output)
             else:
-                # 使用 padding
+                # Use padding
                 padding = self._get_padding(client_id, data_ptr)
                 client_outputs.append(padding)
         
@@ -393,11 +385,11 @@ class SplitNN:
         return pred, max(client_times) if client_times else 0.0, client_outputs
     
     def _update_padding_cache(self, client_id, output):
-        """更新 padding 缓存"""
+        """Update padding cache"""
         self.latest[client_id] = output.detach().clone()
     
     def _get_padding(self, client_id, data_ptr):
-        """获取 padding 张量"""
+        """Get padding tensor"""
         batch_size = data_ptr[client_id].size(0)
         
         if self.config.padding_method == "latest" and client_id in self.latest:
@@ -406,15 +398,15 @@ class SplitNN:
             if latest.size(0) == batch_size:
                 return latest
         
-        # 默认使用 zeros padding
+        # Default: zeros padding
         return torch.zeros(batch_size, self.config.feature_dim, device=self.device)
     
     # -------------------------------------------------------------------------
-    # 训练步骤
+    # Training Step
     # -------------------------------------------------------------------------
     
     def train_step(self, data_ptr, target, local_epochs: int = 1):
-        """单步训练，支持本地多轮迭代
+        """Single training step with local iterations
         
         Args:
             data_ptr: 数据指针
@@ -422,7 +414,7 @@ class SplitNN:
             local_epochs: 本地迭代次数
         
         Returns:
-            (loss, train_time, comm_time): 平均损失、训练时间、通信时间
+            (loss, train_time, comm_time): average loss, training time, communication time
         """
         total_loss = 0.0
         total_comm_time = 0.0
@@ -430,22 +422,22 @@ class SplitNN:
         for local_iter in range(local_epochs):
             iter_start = time.time()
             
-            # 清零梯度
+            # Zero gradients
             for opt in self.optimizers.values():
                 opt.zero_grad()
             
-            # 前向传播
+            # Forward propagation
             pred, fwd_comm_time, client_outputs = self.predict(data_ptr)
             loss = nn.NLLLoss()(pred, target)
             total_loss += loss.item()
             
-            # 反向传播
+            # Backward propagation
             loss.backward()
             
-            # 累计本轮通信时间（前向 + 反向，梯度大小与输出相同）
+            # Accumulate communication time for this round (forward + backward, gradient size same as output)
             total_comm_time += fwd_comm_time * 2
             
-            # 更新参数
+            # Update parameters
             for client_id, opt in self.optimizers.items():
                 if client_id == "server":
                     continue
@@ -458,34 +450,34 @@ class SplitNN:
         
         return total_loss / local_epochs, train_time, total_comm_time    
     def estimate_mi_cuda(self, subdata):
-        """CUDA 版本的 KNN 互信息估计
+        """CUDA version of KNN mutual information estimation
         
-        注意：通信时间在 group_testing 中统一计算
-        这里只计算 MI 值
+        Note: Communication time is calculated in group_testing
+        This method only computes MI value
         
         Returns:
-            mi: 互信息值
+            mi: mutual information value
         """
         if not subdata:
             return 0.0
         
-        # 批量提取特征（使用所有样本）
+        # Batch feature extraction (using all samples)
         features_list = []
         targets = []
         
         with torch.no_grad():
             for _, data_ptr, target in subdata:
-                # target 是整个 batch 的标签
+                # target is the label for entire batch
                 batch_size = target.size(0) if isinstance(target, torch.Tensor) else len(target)
                 
-                # 对 batch 中的每个样本
+                # For each sample in the batch
                 for sample_idx in range(batch_size):
-                    # 聚合选中客户端的特征
+                    # Aggregate features from selected clients
                     combined_feat = []
                     for i in range(self.config.n_clients):
                         client_id = f"client_{i}"
                         if self.selected[client_id]:
-                            # 取单个样本
+                            # Take single sample
                             sample_data = data_ptr[client_id][sample_idx:sample_idx+1]
                             feat = self.models[client_id](sample_data)
                             combined_feat.append(feat[0])
@@ -493,7 +485,7 @@ class SplitNN:
                     if combined_feat:
                         features_list.append(torch.cat(combined_feat))
                     
-                    # 获取对应的 target
+                    # Get corresponding target
                     t = target[sample_idx].item() if isinstance(target, torch.Tensor) else target[sample_idx]
                     targets.append(t)
         
@@ -501,47 +493,47 @@ class SplitNN:
         if n_samples == 0:
             return 0.0
         
-        # 计算距离矩阵
+        # Compute distance matrix
         features = torch.stack(features_list)  # [n_samples, feature_dim * n_selected]
         dist_matrix = torch.cdist(features, features)
-        dist_matrix.fill_diagonal_(float('inf'))  # 排除自身
+        dist_matrix.fill_diagonal_(float('inf'))  # Exclude self
         
-        # 计算 MI
+        # Compute MI
         targets_tensor = torch.tensor(targets, device=self.device)
         mi = 0.0
         
         for idx in range(n_samples):
             target = targets[idx]
             
-            # 类别内距离
+            # In-class distance
             class_mask = (targets_tensor == target)
             Nq = class_mask.sum().item()
             
             class_indices = torch.where(class_mask)[0]
             class_dists = dist_matrix[idx, class_indices]
             
-            # 第 k 近邻距离
+            # k-th nearest neighbor distance
             k = min(self.config.k_nn, len(class_dists))
             if k == 0:
                 continue
             
             rho_k = torch.kthvalue(class_dists, k).values.item()
             
-            # 统计 mq
+            # Count mq
             mq = (dist_matrix[idx] < rho_k).sum().item()
             
-            # MI 公式
+            # MI formula
             if mq > 0:
                 mi += digamma(n_samples) - digamma(Nq) + digamma(k) - digamma(mq)
         
         return mi / n_samples
     
     # -------------------------------------------------------------------------
-    # 组测试
+    # Group Testing
     # -------------------------------------------------------------------------
     
     def group_testing(self, estimate_subdata, n_tests):
-        """组测试选择客户端
+        """Group testing for client selection
         
         流程：
         1. 所有客户端并行发送加密数据给服务器（一次通信）
@@ -692,12 +684,11 @@ def main():
     print(f"Configuration: {config}")
     print(f"{'='*60}\n")
     
-    # 创建通信估算器和加密传输
+    # 创建通信估算器
     comm_estimator = CommunicationEstimator(
         bandwidth_mbps=config.bandwidth_mbps,
         encryption=config.encryption
     )
-    transmission = get_transmission(config.encryption)
     
     # 加载数据
     transform = transforms.Compose([
@@ -757,7 +748,7 @@ def main():
                                      lr=config.learning_rate, momentum=0.9)
     
     # 创建 SplitNN
-    splitnn = SplitNN(models, config, optimizers, transmission, comm_estimator, device)
+    splitnn = SplitNN(models, config, optimizers, comm_estimator, device)
     
     # -------------------------------------------------------------------------
     # 训练循环
@@ -868,7 +859,6 @@ def main():
             # 定期评估
             if global_step % config.eval_every_steps == 0:
                 acc = evaluate(splitnn, distributor.test_set[:10], device)
-                data_mb = comm_estimator.total_data_mb
                 
                 # 整体累计时间
                 overall_total_time = (total_train_time + total_comm_time + 
