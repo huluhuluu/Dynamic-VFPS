@@ -59,41 +59,84 @@ def main():
         transforms.Normalize((0.5,), (0.5,))
     ])
     
-    trainset = datasets.FashionMNIST(
-        root='./datasets/fashion_mnist',
-        download=True,
-        train=True,
-        transform=transform
-    )
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=config.batch_size, shuffle=True)
-    
-    # 加载真正的测试集
-    testset = datasets.FashionMNIST(
-        root='./datasets/fashion_mnist',
-        download=True,
-        train=False,  # 使用测试数据
-        transform=transform
-    )
-    testloader = torch.utils.data.DataLoader(testset, batch_size=config.batch_size, shuffle=False)
-    
-    print(f"Dataset: Fashion-MNIST")
-    print(f"  Train: {len(trainset)} samples, {len(trainloader)} batches")
-    print(f"  Test:  {len(testset)} samples, {len(testloader)} batches")
+    if config.dataset == 'cifar-10':
+        # CIFAR-10: 32x32 RGB images, 10 classes
+        normalize = transforms.Normalize(mean=[0.4914, 0.4822, 0.4465],
+                                        std=[0.2023, 0.1994, 0.2010])
+        transform_train = transforms.Compose([
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomCrop(32, padding=4),
+            transforms.ToTensor(),
+            normalize,
+        ])
+        transform_test = transforms.Compose([
+            transforms.ToTensor(),
+            normalize,
+        ])
+        
+        trainset = datasets.CIFAR10(
+            root='./datasets/cifar-10',
+            download=True,
+            train=True,
+            transform=transform_train
+        )
+        trainloader = torch.utils.data.DataLoader(trainset, batch_size=config.batch_size, shuffle=True)
+        
+        testset = datasets.CIFAR10(
+            root='./datasets/cifar-10',
+            download=True,
+            train=False,
+            transform=transform_test
+        )
+        testloader = torch.utils.data.DataLoader(testset, batch_size=config.batch_size, shuffle=False)
+        
+        print(f"Dataset: CIFAR-10")
+        print(f"  Train: {len(trainset)} samples, {len(trainloader)} batches")
+        print(f"  Test:  {len(testset)} samples, {len(testloader)} batches")
+        print(f"  Image size: 32x32x3")
+        
+    else:  # fashion-mnist
+        trainset = datasets.FashionMNIST(
+            root='./datasets/fashion_mnist',
+            download=True,
+            train=True,
+            transform=transform
+        )
+        trainloader = torch.utils.data.DataLoader(trainset, batch_size=config.batch_size, shuffle=True)
+        
+        testset = datasets.FashionMNIST(
+            root='./datasets/fashion_mnist',
+            download=True,
+            train=False,
+            transform=transform
+        )
+        testloader = torch.utils.data.DataLoader(testset, batch_size=config.batch_size, shuffle=False)
+        
+        print(f"Dataset: Fashion-MNIST")
+        print(f"  Train: {len(trainset)} samples, {len(trainloader)} batches")
+        print(f"  Test:  {len(testset)} samples, {len(testloader)} batches")
+        print(f"  Image size: 28x28x1")
     
     # 数据分发
-    distributor = DataDistributor(config.n_clients, trainloader, device, testloader)
+    distributor = DataDistributor(
+        config.n_clients, trainloader, device, testloader,
+        image_height=config.image_height,
+        image_channels=config.image_channels
+    )
     print(f"Data distributed: {distributor.n_batches} batches, {config.n_clients} clients")
     
     # 创建模型
     torch.manual_seed(0)
-    input_width = 28 // config.n_clients  # 每个客户端的图像宽度
+    input_width = config.image_height // config.n_clients  # 每个客户端的图像宽度
     
     ClientModel, ServerModel = SplitResNet18.create_multi_client_models(
         n_clients=config.n_clients,
         input_width=input_width,
         feature_dim=config.feature_dim,
         hidden_dim=config.hidden_dim,
-        num_classes=config.num_classes
+        num_classes=config.num_classes,
+        input_height=config.image_height,
+        in_channel=config.image_channels
     )
     
     models = {f"client_{i}": ClientModel().to(device) for i in range(config.n_clients)}

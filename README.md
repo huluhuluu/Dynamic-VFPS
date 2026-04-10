@@ -20,11 +20,8 @@ This project implements dynamic participant selection for Vertical Federated Lea
 
 ```bash
 # Create conda environment
-conda env create -f environment_cuda.yml
+conda env create -f environment_cuda.yml -y
 conda activate vfps-gpu
-
-# Or use pip
-pip install -r requirements.txt
 ```
 
 ## Usage

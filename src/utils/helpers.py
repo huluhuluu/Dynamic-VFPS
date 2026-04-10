@@ -39,6 +39,11 @@ def parse_args() -> argparse.Namespace:
     """
     parser = argparse.ArgumentParser(description='Dynamic-VFPS GPU Test')
     
+    # 数据集参数
+    parser.add_argument('--dataset', type=str, default='fashion-mnist',
+                       choices=['fashion-mnist', 'cifar-10'],
+                       help='Dataset to use: fashion-mnist or cifar-10')
+    
     # 训练参数
     parser.add_argument('--epochs', type=int, default=50, help='Number of epochs')
     parser.add_argument('--lr', type=float, default=0.001, help='Learning rate')

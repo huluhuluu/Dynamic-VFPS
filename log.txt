@@ -1,0 +1,238 @@
+[INFO] Device: NVIDIA GeForce RTX 4060 (CUDA 13.0)
+
+============================================================
+Configuration: Epochs: 50, Local epochs: 1, Clients: 10/6, Encryption: plaintext, Bandwidth: 300 Mbps
+============================================================
+
+Dataset: Fashion-MNIST
+  Train: 60000 samples, 235 batches
+  Test:  10000 samples, 40 batches
+Data distributed: 235 batches, 10 clients
+Model: Client 11,299,008 params, Server 329,098 params
+
+============================================================
+[Training Started]
+============================================================
+MI Mode: static
+
+[Static MI Mode]
+  MI data ratio: 0.1111111111111111
+  MI batches: 26
+  Selected clients: ['client_0', 'client_2', 'client_3', 'client_4', 'client_7', 'client_8']
+  MI total time: 185.36s
+  MI compute time: 185.32s
+  MI comm time: 0.0398s (26 batches)
+
+  Clients fixed for all training steps
+
+[Epoch 1/50]
+
+============================================================
+[Data Dimensions]
+============================================================
+  client_0 input: (256, 56) = 14336 elements
+  client_1 input: (256, 56) = 14336 elements
+  client_2 input: (256, 56) = 14336 elements
+  client_3 input: (256, 56) = 14336 elements
+  client_4 input: (256, 56) = 14336 elements
+  client_5 input: (256, 56) = 14336 elements
+  client_6 input: (256, 56) = 14336 elements
+  client_7 input: (256, 56) = 14336 elements
+  client_8 input: (256, 56) = 14336 elements
+  client_9 input: (256, 56) = 14336 elements
+
+  [After client forward (activation to transmit)]
+  client_0 activation: (256, 256) = 65536 elements
+  client_1 activation: (256, 256) = 65536 elements
+  client_2 activation: (256, 256) = 65536 elements
+  client_3 activation: (256, 256) = 65536 elements
+  client_4 activation: (256, 256) = 65536 elements
+  client_5 activation: (256, 256) = 65536 elements
+  client_6 activation: (256, 256) = 65536 elements
+  client_7 activation: (256, 256) = 65536 elements
+  client_8 activation: (256, 256) = 65536 elements
+  client_9 activation: (256, 256) = 65536 elements
+
+  [Server receives from 6 selected clients]
+  Total activation size: 393216 elements = 1536.00 KB
+============================================================
+
+  Step   10 | Selected: ['client_0', 'client_2', 'client_3', 'client_4', 'client_7', 'client_8'] | Loss: 2.2424 | Acc: 32.03%
+         Step: 0.047s
+           - Train: 0.033s
+           - Comm: 0.0140s
+         Total: 185.97s
+           - Train: 0.47s
+           - Comm: 0.14s
+           - MI Compute: 185.32s
+           - MI Comm: 0.04s
+  Step   20 | Selected: ['client_0', 'client_2', 'client_3', 'client_4', 'client_7', 'client_8'] | Loss: 2.0902 | Acc: 53.20%
+         Step: 0.047s
+           - Train: 0.033s
+           - Comm: 0.0140s
+         Total: 186.45s
+           - Train: 0.81s
+           - Comm: 0.28s
+           - MI Compute: 185.32s
+           - MI Comm: 0.04s
+  Step   30 | Selected: ['client_0', 'client_2', 'client_3', 'client_4', 'client_7', 'client_8'] | Loss: 1.8863 | Acc: 58.09%
+         Step: 0.047s
+           - Train: 0.033s
+           - Comm: 0.0140s
+         Total: 186.92s
+           - Train: 1.14s
+           - Comm: 0.42s
+           - MI Compute: 185.32s
+           - MI Comm: 0.04s
+  Step   40 | Selected: ['client_0', 'client_2', 'client_3', 'client_4', 'client_7', 'client_8'] | Loss: 1.6298 | Acc: 63.83%
+         Step: 0.048s
+           - Train: 0.034s
+           - Comm: 0.0140s
+         Total: 187.39s
+           - Train: 1.48s
+           - Comm: 0.56s
+           - MI Compute: 185.32s
+           - MI Comm: 0.04s
+
+[Epoch 2/50]
+  Step   50 | Selected: ['client_0', 'client_2', 'client_3', 'client_4', 'client_7', 'client_8'] | Loss: 1.4204 | Acc: 67.15%
+         Step: 0.047s
+           - Train: 0.033s
+           - Comm: 0.0140s
+         Total: 187.87s
+           - Train: 1.81s
+           - Comm: 0.70s
+           - MI Compute: 185.32s
+           - MI Comm: 0.04s
+  Step   60 | Selected: ['client_0', 'client_2', 'client_3', 'client_4', 'client_7', 'client_8'] | Loss: 1.1980 | Acc: 69.57%
+         Step: 0.047s
+           - Train: 0.033s
+           - Comm: 0.0140s
+         Total: 188.34s
+           - Train: 2.14s
+           - Comm: 0.84s
+           - MI Compute: 185.32s
+           - MI Comm: 0.04s
+  Step   70 | Selected: ['client_0', 'client_2', 'client_3', 'client_4', 'client_7', 'client_8'] | Loss: 1.0202 | Acc: 71.52%
+         Step: 0.047s
+           - Train: 0.033s
+           - Comm: 0.0140s
+         Total: 188.81s
+           - Train: 2.47s
+           - Comm: 0.98s
+           - MI Compute: 185.32s
+           - MI Comm: 0.04s
+  Step   80 | Selected: ['client_0', 'client_2', 'client_3', 'client_4', 'client_7', 'client_8'] | Loss: 0.8431 | Acc: 73.55%
+         Step: 0.047s
+           - Train: 0.033s
+           - Comm: 0.0140s
+         Total: 189.28s
+           - Train: 2.80s
+           - Comm: 1.12s
+           - MI Compute: 185.32s
+           - MI Comm: 0.04s
+  Step   90 | Selected: ['client_0', 'client_2', 'client_3', 'client_4', 'client_7', 'client_8'] | Loss: 0.9033 | Acc: 73.71%
+         Step: 0.047s
+           - Train: 0.033s
+           - Comm: 0.0140s
+         Total: 189.75s
+           - Train: 3.14s
+           - Comm: 1.26s
+           - MI Compute: 185.32s
+           - MI Comm: 0.04s
+
+[Epoch 3/50]
+  Step  100 | Selected: ['client_0', 'client_2', 'client_3', 'client_4', 'client_7', 'client_8'] | Loss: 0.7280 | Acc: 76.13%
+         Step: 0.047s
+           - Train: 0.033s
+           - Comm: 0.0140s
+         Total: 190.23s
+           - Train: 3.47s
+           - Comm: 1.40s
+           - MI Compute: 185.32s
+           - MI Comm: 0.04s
+  Step  110 | Selected: ['client_0', 'client_2', 'client_3', 'client_4', 'client_7', 'client_8'] | Loss: 0.6414 | Acc: 76.56%
+         Step: 0.047s
+           - Train: 0.033s
+           - Comm: 0.0140s
+         Total: 190.70s
+           - Train: 3.80s
+           - Comm: 1.54s
+           - MI Compute: 185.32s
+           - MI Comm: 0.04s
+  Step  120 | Selected: ['client_0', 'client_2', 'client_3', 'client_4', 'client_7', 'client_8'] | Loss: 0.7128 | Acc: 77.30%
+         Step: 0.047s
+           - Train: 0.033s
+           - Comm: 0.0140s
+         Total: 191.17s
+           - Train: 4.13s
+           - Comm: 1.68s
+           - MI Compute: 185.32s
+           - MI Comm: 0.04s
+  Step  130 | Selected: ['client_0', 'client_2', 'client_3', 'client_4', 'client_7', 'client_8'] | Loss: 0.5656 | Acc: 77.81%
+         Step: 0.047s
+           - Train: 0.033s
+           - Comm: 0.0140s
+         Total: 191.64s
+           - Train: 4.47s
+           - Comm: 1.82s
+           - MI Compute: 185.32s
+           - MI Comm: 0.04s
+
+[Epoch 4/50]
+  Step  140 | Selected: ['client_0', 'client_2', 'client_3', 'client_4', 'client_7', 'client_8'] | Loss: 0.5589 | Acc: 79.06%
+         Step: 0.047s
+           - Train: 0.033s
+           - Comm: 0.0140s
+         Total: 192.12s
+           - Train: 4.80s
+           - Comm: 1.96s
+           - MI Compute: 185.32s
+           - MI Comm: 0.04s
+  Step  150 | Selected: ['client_0', 'client_2', 'client_3', 'client_4', 'client_7', 'client_8'] | Loss: 0.5092 | Acc: 79.38%
+         Step: 0.047s
+           - Train: 0.033s
+           - Comm: 0.0140s
+         Total: 192.59s
+           - Train: 5.13s
+           - Comm: 2.10s
+           - MI Compute: 185.32s
+           - MI Comm: 0.04s
+  Step  160 | Selected: ['client_0', 'client_2', 'client_3', 'client_4', 'client_7', 'client_8'] | Loss: 0.5807 | Acc: 80.31%
+         Step: 0.047s
+           - Train: 0.033s
+           - Comm: 0.0140s
+         Total: 193.06s
+           - Train: 5.47s
+           - Comm: 2.24s
+           - MI Compute: 185.32s
+           - MI Comm: 0.04s
+  Step  170 | Selected: ['client_0', 'client_2', 'client_3', 'client_4', 'client_7', 'client_8'] | Loss: 0.4973 | Acc: 80.78%
+         Step: 0.047s
+           - Train: 0.033s
+           - Comm: 0.0140s
+         Total: 193.54s
+           - Train: 5.80s
+           - Comm: 2.38s
+           - MI Compute: 185.32s
+           - MI Comm: 0.04s
+
+[Epoch 5/50]
+  Step  180 | Selected: ['client_0', 'client_2', 'client_3', 'client_4', 'client_7', 'client_8'] | Loss: 0.5183 | Acc: 81.33%
+         Step: 0.047s
+           - Train: 0.033s
+           - Comm: 0.0140s
+         Total: 194.01s
+           - Train: 6.14s
+           - Comm: 2.52s
+           - MI Compute: 185.32s
+           - MI Comm: 0.04s
+  Step  190 | Selected: ['client_0', 'client_2', 'client_3', 'client_4', 'client_7', 'client_8'] | Loss: 0.6182 | Acc: 81.37%
+         Step: 0.047s
+           - Train: 0.033s
+           - Comm: 0.0140s
+         Total: 194.48s
+           - Train: 6.47s
+           - Comm: 2.66s
+           - MI Compute: 185.32s
+           - MI Comm: 0.04s

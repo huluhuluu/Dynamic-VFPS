@@ -1,8 +1,12 @@
 """
-ResNet18 模型定义 - 适配 28x28 单通道图像 (Fashion-MNIST/MNIST)
+ResNet18 模型定义 - 适配小尺寸图像
+
+支持两种输入：
+1. Fashion-MNIST/MNIST: 28x28 单通道图像
+2. CIFAR-10: 32x32 三通道图像
 
 参考 vflweight 项目的实现，对标准 ResNet18 进行了以下修改：
-1. 输入通道改为 1 (灰度图)
+1. 输入通道可配置 (1 或 3)
 2. 第一个卷积层从 7x7 stride=2 改为 3x3 stride=1
 3. 使用 AdaptiveAvgPool2d 适配小图像
 """
@@ -93,8 +97,10 @@ def ResNet18(num_classes=10, in_channel=1):
     创建 ResNet18 模型
     
     Args:
-        num_classes: 分类数量，默认 10 (Fashion-MNIST)
-        in_channel: 输入通道数，默认 1 (灰度图)
+        num_classes: 分类数量，默认 10
+        in_channel: 输入通道数
+            - 1: 灰度图 (Fashion-MNIST/MNIST)
+            - 3: RGB 图 (CIFAR-10)
     
     Returns:
         ResNet 模型实例

@@ -31,6 +31,11 @@ class Config:
         # Encryption method
         self.encryption = "plaintext"
         
+        # Dataset parameters
+        self.dataset = "fashion-mnist"  # 'fashion-mnist' or 'cifar-10'
+        self.image_height = 28  # 28 for Fashion-MNIST, 32 for CIFAR-10
+        self.image_channels = 1  # 1 for Fashion-MNIST, 3 for CIFAR-10
+        
         # Model parameters
         self.feature_dim = 256
         self.hidden_dim = 128
@@ -61,11 +66,21 @@ class Config:
         config.k_nn = args.k_nn
         config.encryption = args.encryption
         config.bandwidth_mbps = args.bandwidth
+        
+        # Dataset configuration
+        config.dataset = args.dataset
+        if args.dataset == 'cifar-10':
+            config.image_height = 32
+            config.image_channels = 3
+        else:  # fashion-mnist
+            config.image_height = 28
+            config.image_channels = 1
+        
         return config
     
     def __str__(self) -> str:
         return (
-            f"Epochs: {self.epochs}, Local epochs: {self.local_epochs}, "
+            f"Dataset: {self.dataset}, Epochs: {self.epochs}, Local epochs: {self.local_epochs}, "
             f"Clients: {self.n_clients}/{self.n_selected}, "
             f"Encryption: {self.encryption}, Bandwidth: {self.bandwidth_mbps} Mbps"
         )

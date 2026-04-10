@@ -3,7 +3,11 @@ ResNet18 分割模型 - 用于垂直联邦学习
 
 提供两种分割方案：
 1. 单客户端分割：ResNet18 在客户端，分类头在服务器
-2. 多客户端垂直分割：每个客户端处理图像的一部分行
+2. 多客户端垂直分割：每个客户端处理图像的一部分列
+
+支持数据集：
+- Fashion-MNIST/MNIST: 28x28 单通道图像
+- CIFAR-10: 32x32 三通道图像
 """
 
 import torch
@@ -63,25 +67,27 @@ class MultiClientNet(nn.Module):
     客户端网络 - 多客户端垂直分割版本
     
     参考 vflweight 的设计：
-    - 垂直分割按列进行，每个客户端收到 28x(width) 的图像
+    - 垂直分割按列进行，每个客户端收到 heightx(width) 的图像
     - 直接使用完整的 ResNet18
-    - 输入: (batch, 28, width) 或 (batch, width*28)
+    - 输入: (batch, height, width) 或 (batch, height*width)
     """
     
-    def __init__(self, input_width=4, feature_dim=256):
+    def __init__(self, input_width=4, feature_dim=256, input_height=28, in_channel=1):
         super(MultiClientNet, self).__init__()
         self.input_width = input_width
+        self.input_height = input_height
+        self.in_channel = in_channel
         self.feature_dim = feature_dim
         
         # 直接使用完整的 ResNet18
         from .resnet import ResNet, ResidualBlock
-        self.resnet18 = ResNet(ResidualBlock, num_classes=feature_dim, in_channel=1)
+        self.resnet18 = ResNet(ResidualBlock, num_classes=feature_dim, in_channel=in_channel)
     
     def forward(self, x):
         # 参考 vflweight 的处理方式
-        # 输入: (batch, 28, width) 或 (batch, 28*width) 
-        # 输出: (batch, 1, 28, width) 供 ResNet18 使用
-        x = x.view(x.shape[0], 1, 28, -1)
+        # 输入: (batch, height, width) 或 (batch, height*width) 
+        # 输出: (batch, in_channel, height, width) 供 ResNet18 使用
+        x = x.view(x.shape[0], self.in_channel, self.input_height, -1)
         x = self.resnet18(x)
         return x
 
@@ -159,21 +165,23 @@ class SplitResNet18:
     
     @staticmethod
     def create_multi_client_models(n_clients=4, input_width=4, feature_dim=256, 
-                                    hidden_dim=64, num_classes=10):
+                                    hidden_dim=64, num_classes=10, input_height=28, in_channel=1):
         """
         创建多客户端垂直分割模型
         
         参考 vflweight 的设计：
         - 垂直分割按列进行
-        - 每个客户端收到 28x(width) 的图像
-        - 高度固定为 28，宽度可变
+        - 每个客户端收到 heightx(width) 的图像
+        - 高度固定，宽度可变
         
         Args:
             n_clients: 客户端数量
-            input_width: 每个客户端处理的图像宽度 (28 / n_clients 左右，可能有重叠)
+            input_width: 每个客户端处理的图像宽度
             feature_dim: 每个客户端的特征维度
             hidden_dim: 服务器隐藏层维度
             num_classes: 分类数
+            input_height: 输入图像高度 (28 for Fashion-MNIST, 32 for CIFAR-10)
+            in_channel: 输入通道数 (1 for Fashion-MNIST, 3 for CIFAR-10)
         
         Returns:
             (ClientModelClass, ServerModelClass) 元组
@@ -184,13 +192,14 @@ class SplitResNet18:
             def __init__(self):
                 super().__init__()
                 self.input_width = input_width
+                self.input_height = input_height
+                self.in_channel = in_channel
                 # 直接使用 ResNet18
-                self.resnet18 = ResNet(ResidualBlock, num_classes=feature_dim, in_channel=1)
+                self.resnet18 = ResNet(ResidualBlock, num_classes=feature_dim, in_channel=in_channel)
             
             def forward(self, x):
-                # 参考 vflweight: x.view(x.shape[0], 1, 28, -1)
-                # 输入: (batch, 28*width) -> 输出: (batch, 1, 28, width)
-                x = x.view(x.shape[0], 1, 28, -1)
+                # 输入: (batch, height*width) -> 输出: (batch, in_channel, height, width)
+                x = x.view(x.shape[0], self.in_channel, self.input_height, -1)
                 x = self.resnet18(x)
                 return x
         
