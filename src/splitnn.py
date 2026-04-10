@@ -1,5 +1,5 @@
 """
-分割神经网络 - 垂直联邦学习
+Split Neural Network for Vertical Federated Learning
 """
 
 import time
@@ -14,18 +14,18 @@ from src.utils.helpers import digamma
 
 
 class SplitNN:
-    """分割神经网络 - 用于垂直联邦学习，基于 MI 的动态客户端选择"""
+    """Split neural network for VFL with MI-based dynamic client selection"""
     
     def __init__(self, models, config: Config, optimizers, 
                  comm_estimator: CommunicationEstimator, device):
-        """初始化分割神经网络
+        """Initialize split neural network
         
         Args:
-            models: 模型字典
-            config: 训练配置
-            optimizers: 优化器字典
-            comm_estimator: 通信估算器
-            device: 计算设备
+            models: Model dictionary
+            config: Training configuration
+            optimizers: Optimizer dictionary
+            comm_estimator: Communication estimator
+            device: Computation device
         """
         self.models = models
         self.config = config
@@ -33,10 +33,10 @@ class SplitNN:
         self.comm_estimator = comm_estimator
         self.device = device
         
-        # 客户端选择状态
+        # Client selection state
         self.selected = {f"client_{i}": True for i in range(config.n_clients)}
         
-        # MI 估计相关
+        # MI estimation scores
         self.scores: Dict[str, float] = {}
         
         # Padding cache
@@ -47,16 +47,13 @@ class SplitNN:
     # -------------------------------------------------------------------------
     
     def predict(self, data_ptr: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, float, List[torch.Tensor]]:
-        """前向传播（明文传输，用于模型训练阶段）
+        """Forward propagation (plaintext transmission for training)
         
         Args:
-            data_ptr: 数据指针
+            data_ptr: Data pointer
             
         Returns:
-            (pred, comm_time, client_outputs): 
-                - pred: 预测结果
-                - comm_time: 传输时间（取 max 因为并行）
-                - client_outputs: 选中客户端的实际输出张量列表（用于梯度传输估算）
+            (pred, comm_time, client_outputs): prediction, communication time, client outputs
         """
         client_outputs = []
         client_times = []
@@ -65,14 +62,14 @@ class SplitNN:
             client_id = f"client_{i}"
             
             if self.selected[client_id]:
-                # 客户端前向
+                # Client forward pass
                 output = self.models[client_id](data_ptr[client_id])
                 
-                # 明文传输估算
+                # Plaintext transmission estimation
                 t = self.comm_estimator.estimate_plaintext(output)
                 client_times.append(t)
                 
-                # 保存输出（用于后续梯度传输估算）
+                # Save output for gradient transmission estimation
                 client_outputs.append(output)
                 
                 # Update padding cache
@@ -82,23 +79,23 @@ class SplitNN:
                 padding = self._get_padding(client_id, data_ptr)
                 client_outputs.append(padding)
         
-        # 服务器前向
+        # Server forward pass
         server_input = torch.cat(client_outputs, dim=1)
         pred = self.models["server"](server_input)
         
         return pred, max(client_times) if client_times else 0.0, client_outputs
     
     def _update_padding_cache(self, client_id: str, output: torch.Tensor):
-        """更新 padding 缓存"""
+        """Update padding cache"""
         self.latest[client_id] = output.detach().clone()
     
     def _get_padding(self, client_id: str, data_ptr: Dict[str, torch.Tensor]) -> torch.Tensor:
-        """获取 padding 张量"""
+        """Get padding tensor"""
         batch_size = data_ptr[client_id].size(0)
         
         if self.config.padding_method == "latest" and client_id in self.latest:
             latest = self.latest[client_id]
-            # 如果 batch size 匹配，使用 latest
+            # Use latest if batch size matches
             if latest.size(0) == batch_size:
                 return latest
         
@@ -111,15 +108,15 @@ class SplitNN:
     
     def train_step(self, data_ptr: Dict[str, torch.Tensor], target: torch.Tensor, 
                    local_epochs: int = 1) -> Tuple[float, float, float]:
-        """单个训练步骤（包含本地迭代）
+        """Single training step with local iterations
         
         Args:
-            data_ptr: 数据指针
-            target: 标签
-            local_epochs: 本地迭代次数
+            data_ptr: Data pointer
+            target: Labels
+            local_epochs: Number of local iterations
         
         Returns:
-            (loss, train_time, comm_time): 平均损失、训练时间、通信时间
+            (loss, train_time, comm_time): average loss, training time, communication time
         """
         total_loss = 0.0
         total_comm_time = 0.0
@@ -150,7 +147,7 @@ class SplitNN:
                     opt.step()
             self.optimizers["server"].step()
         
-        # 训练时间（计算时间，不含通信）
+        # Training time (computation only, excluding communication)
         train_time = time.time() - iter_start
         
         return total_loss / local_epochs, train_time, total_comm_time
@@ -160,16 +157,16 @@ class SplitNN:
     # -------------------------------------------------------------------------
     
     def estimate_mi_cuda(self, subdata: List[Tuple[int, Dict[str, torch.Tensor], torch.Tensor]]) -> float:
-        """CUDA 版本的 KNN 互信息估计
+        """CUDA-based KNN mutual information estimation
         
-        注意：通信时间在 group_testing 中计算
-        此方法仅计算 MI 值
+        Note: Communication time is calculated in group_testing.
+        This method only computes MI value.
         
         Args:
-            subdata: 子数据列表
+            subdata: Subset data list
             
         Returns:
-            互信息值
+            Mutual information value
         """
         if not subdata:
             return 0.0
@@ -247,24 +244,24 @@ class SplitNN:
     
     def group_testing(self, estimate_subdata: List[Tuple[int, Dict[str, torch.Tensor], torch.Tensor]], 
                       n_tests: int) -> Tuple[Dict[str, float], float, float]:
-        """组测试进行客户端选择
+        """Group testing for client selection
         
-        流程：
-        1. 所有客户端并行发送加密数据给服务器（一次通信）
-        2. 服务器本地进行 n_tests 次组测试（无额外通信）
+        Process:
+        1. All clients send encrypted data to server (one communication)
+        2. Server performs n_tests group tests locally (no extra communication)
         
         Args:
-            estimate_subdata: 用于估计的子数据
-            n_tests: 组测试次数
+            estimate_subdata: Data subset for estimation
+            n_tests: Number of group tests
             
         Returns:
-            (scores, mi_comm_time, mi_comp_time): 客户端分数、通信时间、计算时间
+            (scores, mi_comm_time, mi_comp_time): client scores, communication time, computation time
         """
         self.scores = {f"client_{i}": 0.0 for i in range(self.config.n_clients)}
         
-        # 1. 计算所有数据的加密通信时间
-        # 每个 batch：所有客户端并行发送，取 max
-        # 总时间：所有 batch 的通信时间之和
+        # 1. Calculate encrypted communication time for all data
+        # Each batch: all clients send in parallel, take max
+        # Total time: sum of all batch communication times
         batch_comm_times = []
         for _, data_ptr, _ in estimate_subdata:
             client_times = []
@@ -272,47 +269,47 @@ class SplitNN:
                 client_id = f"client_{i}"
                 t = self.comm_estimator.estimate_encrypted(data_ptr[client_id])
                 client_times.append(t)
-            # 这个 batch 的通信时间 = max（并行传输）
+            # Batch communication time = max (parallel transmission)
             batch_comm_times.append(max(client_times) if client_times else 0.0)
         
-        # 总通信时间 = 所有 batch 的通信时间之和
+        # Total communication time = sum of all batch times
         mi_comm_time = sum(batch_comm_times)
         
         mi_start = time.time()
-        # 2. 本地进行 n_tests 次组测试（无需额外通信）
+        # 2. Perform n_tests group tests locally (no extra communication)
         for _ in range(n_tests):
-            # 随机生成测试组
+            # Randomly generate test group
             test_group = self._generate_test_group()
             
-            # 临时设置选中状态
+            # Temporarily set selected state
             original_selected = self.selected.copy()
             self.selected = {f"client_{i}": (f"client_{i}" in test_group) 
                            for i in range(self.config.n_clients)}
             
-            # 计算 MI（本地计算，无通信）
+            # Compute MI (local computation, no communication)
             mi = self.estimate_mi_cuda(estimate_subdata)
             
-            # 累加分数
+            # Accumulate scores
             for client_id in test_group:
                 self.scores[client_id] += mi
             
-            # 恢复选中状态
+            # Restore selected state
             self.selected = original_selected
         
-        # 平均分数并选择
+        # Average scores and select
         self.scores = {k: v / n_tests for k, v in self.scores.items()}
         self._select_top_clients()
         
         return self.scores, mi_comm_time, time.time() - mi_start
     
     def _generate_test_group(self, p: float = 0.5) -> List[str]:
-        """随机生成测试组
+        """Randomly generate test group
         
         Args:
-            p: 选择概率
+            p: Selection probability
             
         Returns:
-            测试组客户端 ID 列表
+            Test group client ID list
         """
         test_group = []
         while len(test_group) < 1:
@@ -322,7 +319,7 @@ class SplitNN:
         return test_group
     
     def _select_top_clients(self):
-        """选择分数最高的客户端"""
+        """Select top-scored clients"""
         sorted_clients = sorted(self.scores.items(), key=lambda x: x[1], reverse=True)
         
         self.selected = {f"client_{i}": False for i in range(self.config.n_clients)}

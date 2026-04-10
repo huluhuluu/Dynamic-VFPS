@@ -1,12 +1,12 @@
 """
-训练配置模块
+Training Configuration Module
 """
 
 import argparse
 
 
 class Config:
-    """训练配置"""
+    """Training configuration"""
     
     def __init__(self):
         # Training parameters
@@ -20,7 +20,7 @@ class Config:
         self.n_clients = 10
         self.n_selected = 6
         
-        # Mutual information estimation parameters
+        # MI estimation parameters
         self.n_tests = 5
         self.k_nn = 3
         
@@ -47,13 +47,13 @@ class Config:
     
     @classmethod
     def from_args(cls, args: argparse.Namespace) -> 'Config':
-        """从命令行参数创建配置
+        """Create configuration from command line arguments
         
         Args:
-            args: 命令行参数
+            args: Command line arguments
             
         Returns:
-            Config 实例
+            Config instance
         """
         config = cls()
         config.epochs = args.epochs

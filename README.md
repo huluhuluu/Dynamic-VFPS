@@ -29,8 +29,11 @@ conda activate vfps-gpu
 ### Basic Usage
 
 ```bash
-# Default parameters (dynamic mode, plaintext)
+# Fashion-MNIST (default)
 python test_gpu.py
+
+# CIFAR-10
+python test_gpu.py --dataset cifar-10
 
 # Custom parameters
 python test_gpu.py --epochs 50 --clients 10 --selected 6
@@ -41,12 +44,16 @@ python test_gpu.py --encryption paillier
 
 # Static MI mode (select clients once before training)
 python test_gpu.py --mi-mode static --mi-ratio 0.111
+
+# CIFAR-10 with custom settings
+python test_gpu.py --dataset cifar-10 --epochs 100 --lr 0.01
 ```
 
 ### Parameters
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
+| `--dataset` | fashion-mnist | Dataset: `fashion-mnist` or `cifar-10` |
 | `--epochs` | 50 | Number of training epochs |
 | `--lr` | 0.001 | Learning rate |
 | `--batch-size` | 256 | Batch size |
@@ -54,6 +61,7 @@ python test_gpu.py --mi-mode static --mi-ratio 0.111
 | `--clients` | 10 | Number of total clients |
 | `--selected` | 6 | Number of selected clients |
 | `--n-tests` | 5 | Number of group tests |
+| `--k-nn` | 3 | KNN k value for MI estimation |
 | `--mi-mode` | dynamic | MI mode: `dynamic` or `static` |
 | `--mi-ratio` | 0.111 | Data ratio for MI estimation (static mode) |
 | `--encryption` | plaintext | Encryption: `plaintext`, `paillier`, `tenseal` |
@@ -83,33 +91,73 @@ The implementation provides detailed time breakdown:
 ## Project Structure
 
 ```
-Dynamic-VFPS/
-├── test.py              # Legacy version
-├── test_gpu.py          # New version (GPU support)
+Simulation-VFPS/
+├── test.py                          # Legacy version (PySyft-based)
+├── test_gpu.py                      # New version (GPU support, recommended)
+├── run.sh                           # Run script examples
+├── requirements.txt                 # Pip dependencies
+├── environment_cuda.yml             # Conda environment config
+│
 ├── src/
-│   ├── models/          # Neural network models
-│   ├── transmission/    # Encryption implementations
-│   │   ├── plaintext.py
-│   │   ├── paillier/
-│   │   └── tenseal/
-│   └── utils/           # Utility functions
-├── datasets/            # Dataset storage
-└── README.md
+│   ├── __init__.py                  # Package initialization
+│   ├── config.py                    # Training configuration
+│   ├── splitnn.py                   # Split neural network core
+│   ├── evaluation.py                # Model evaluation
+│   │
+│   ├── models/                      # Neural network models
+│   │   ├── resnet.py                # ResNet18 implementation
+│   │   └── split_resnet.py          # Split ResNet for VFL
+│   │
+│   ├── data/                        # Data processing
+│   │   └── distributor.py           # Vertical data distribution
+│   │
+│   ├── communication/               # Communication module
+│   │   └── estimator.py             # Communication time estimator
+│   │
+│   ├── transmission/                # Encryption implementations
+│   │   ├── base.py                  # Base transmission class
+│   │   ├── plaintext.py             # Plaintext transmission
+│   │   ├── paillier/                # Paillier encryption
+│   │   └── tenseal/                 # TenSEAL/CKKS encryption
+│   │
+│   └── utils/                       # Utility functions
+│       ├── helpers.py               # Helper functions (digamma, args)
+│       └── split_data.py            # Data split utilities
+│
+├── datasets/                        # Dataset storage
+│   ├── mnist/                       # MNIST data
+│   └── fashion_mnist/               # Fashion-MNIST data
+│
+└── README.md                        # This file
 ```
 
-## Model Architecture
+## Datasets
 
-- **Client Model**: ResNet18 (adapted for 28x28 single-channel images)
-- **Server Model**: Fully connected layers for classification
-- **Dataset**: Fashion-MNIST (vertical partition)
+Supports two datasets:
+
+| Dataset | Image Size | Channels | Classes | Training Samples |
+|---------|-----------|----------|---------|------------------|
+| Fashion-MNIST | 28x28 | 1 (grayscale) | 10 | 60,000 |
+| CIFAR-10 | 32x32 | 3 (RGB) | 10 | 50,000 |
 
 ### Data Partition
 
-Images are vertically partitioned by columns:
-- Each client receives `28 × (28/n_clients)` pixels
-- For 10 clients: each gets `28 × 2 = 56` features per sample
+Images are vertically partitioned by columns with **complete data distribution** (no data loss):
 
+**Fashion-MNIST (28x28, 10 clients)**:
+- First 8 clients: 3 columns each (28×3 = 84 pixels)
+- Last 2 clients: 2 columns each (28×2 = 56 pixels)
+- Total: 8×3 + 2×2 = 28 columns ✓
 
-## License
+**CIFAR-10 (32x32, 10 clients)**:
+- First 2 clients: 4 columns each (32×4 = 128 pixels)
+- Last 8 clients: 3 columns each (32×3 = 96 pixels)
+- Total: 2×4 + 8×3 = 32 columns ✓
 
-MIT License
+## Model Architecture
+
+- **Client Model**: ResNet18 (adapted for small images, supports variable input widths)
+- **Server Model**: Fully connected layers for classification
+- **Feature Dim**: 256 per client
+
+## Time Statistics

@@ -1,5 +1,5 @@
 """
-模型评估模块
+Model Evaluation Module
 """
 
 import torch
@@ -10,15 +10,15 @@ from src.splitnn import SplitNN
 
 def evaluate(splitnn: SplitNN, test_set: List[Tuple[Dict[str, torch.Tensor], torch.Tensor]], 
              device: torch.device) -> float:
-    """评估模型准确率
+    """Evaluate model accuracy
     
     Args:
-        splitnn: 分割神经网络
-        test_set: 测试集
-        device: 计算设备
+        splitnn: Split neural network
+        test_set: Test set
+        device: Computation device
         
     Returns:
-        准确率
+        Accuracy
     """
     correct = 0
     total = 0
@@ -26,7 +26,8 @@ def evaluate(splitnn: SplitNN, test_set: List[Tuple[Dict[str, torch.Tensor], tor
     with torch.no_grad():
         for data_ptr, label in test_set:
             label = label.to(device)
-            pred, _, _ = splitnn.predict(data_ptr)  # 忽略通信时间和输出
+            # Ignore communication time and outputs
+        pred, _, _ = splitnn.predict(data_ptr)
             
             pred_labels = pred.argmax(dim=1).cpu().numpy()
             true_labels = label.cpu().numpy()

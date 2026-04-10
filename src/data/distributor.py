@@ -1,5 +1,5 @@
 """
-数据分发器 - 垂直联邦学习
+Data Distributor for Vertical Federated Learning
 """
 
 import random
@@ -8,70 +8,77 @@ from typing import List, Dict, Tuple, Any
 
 
 class DataDistributor:
-    """数据分发器 - 用于垂直联邦学习
+    """Distribute data vertically across clients
     
-    基于 vflweight 设计：按列切分
-    - 每个客户端接收 heightx(width) 图像
-    - 高度固定，宽度可变
-    
-    支持：
-    - Fashion-MNIST: 28x28 单通道
-    - CIFAR-10: 32x32 三通道
+    Column-wise split: each client receives height x width slice.
+    Supports Fashion-MNIST (28x28x1) and CIFAR-10 (32x32x3).
     """
     
     def __init__(self, n_clients: int, data_loader, device, test_loader=None, 
                  image_height: int = 28, image_channels: int = 1):
-        """初始化数据分发器
+        """Initialize data distributor
         
         Args:
-            n_clients: 客户端数量
-            data_loader: 训练数据加载器
-            device: 计算设备
-            test_loader: 测试数据加载器（可选）
-            image_height: 图像高度 (28 for Fashion-MNIST, 32 for CIFAR-10)
-            image_channels: 图像通道数 (1 for Fashion-MNIST, 3 for CIFAR-10)
+            n_clients: Number of clients
+            data_loader: Training data loader
+            device: Computation device
+            test_loader: Test data loader (optional)
+            image_height: Image height (28 for Fashion-MNIST, 32 for CIFAR-10)
+            image_channels: Number of channels (1 for Fashion-MNIST, 3 for CIFAR-10)
         """
         self.n_clients = n_clients
         self.device = device
         self.image_height = image_height
         self.image_channels = image_channels
         
-        # 垂直划分训练数据（按列）
+        # Calculate width for each client (ensure complete split without data loss)
+        image_width = image_height
+        base_width = image_width // n_clients
+        remainder = image_width % n_clients
+        
+        # Distribute remainder: first 'remainder' clients get 1 extra column
+        self.client_widths = []
+        for i in range(n_clients):
+            client_width = base_width + (1 if i < remainder else 0)
+            self.client_widths.append(client_width)
+        
+        # Verify total width
+        total_width = sum(self.client_widths)
+        assert total_width == image_width, f"Width allocation error: {total_width} != {image_width}"
+        
+        # Split training data vertically (by columns)
         self.data_pointer: List[Dict[str, torch.Tensor]] = []
         self.labels: List[torch.Tensor] = []
         
         for images, labels in data_loader:
             images = images.to(device)
-            # 对于 CIFAR-10，图像已经是三通道的，不需要额外处理
-            width = images.shape[-1] // n_clients
             
             curr_data = {}
+            start_col = 0
             for i in range(n_clients):
-                start_col = i * width
-                end_col = start_col + width
-                # 按列分割: 
-                # Fashion-MNIST: (batch, 1, 28, 28) -> (batch, 28, width) -> (batch, 28*width)
-                # CIFAR-10: (batch, 3, 32, 32) -> (batch, 3, 32, width) -> (batch, 3*32*width)
-                image_part = images[:, :, :, start_col:end_col]  # (batch, channels, height, width)
+                client_width = self.client_widths[i]
+                end_col = start_col + client_width
+                image_part = images[:, :, :, start_col:end_col]
                 curr_data[f"client_{i}"] = image_part.reshape(images.size(0), -1)
+                start_col = end_col
             
             self.data_pointer.append(curr_data)
             self.labels.append(labels)
         
-        # 创建测试集（使用真正的测试数据）
+        # Create test set
         self.test_set = self._create_test_set(test_loader)
         
-        # 训练子数据
+        # Training subset
         self.subdata: List[Tuple[int, Dict[str, torch.Tensor], torch.Tensor]] = []
     
     def _create_test_set(self, test_loader) -> List[Tuple[Dict[str, torch.Tensor], torch.Tensor]]:
-        """使用真正的测试数据创建测试集
+        """Create test set using test data loader
         
         Args:
-            test_loader: 测试数据加载器
+            test_loader: Test data loader
             
         Returns:
-            测试集列表
+            Test set list
         """
         if test_loader is None:
             return []
@@ -79,24 +86,25 @@ class DataDistributor:
         test_set = []
         for images, labels in test_loader:
             images = images.to(self.device)
-            width = images.shape[-1] // self.n_clients
             
             curr_data = {}
+            start_col = 0
             for i in range(self.n_clients):
-                start_col = i * width
-                end_col = start_col + width
+                client_width = self.client_widths[i]
+                end_col = start_col + client_width
                 image_part = images[:, :, :, start_col:end_col]
                 curr_data[f"client_{i}"] = image_part.reshape(images.size(0), -1)
+                start_col = end_col
             
             test_set.append((curr_data, labels))
         
         return test_set
     
     def generate_subdata(self, prob: float = 0.2):
-        """生成训练子数据
+        """Generate training subset
         
         Args:
-            prob: 采样概率
+            prob: Sampling probability
         """
         self.subdata = []
         for idx, (data_ptr, label) in enumerate(zip(self.data_pointer, self.labels)):
@@ -104,13 +112,13 @@ class DataDistributor:
                 self.subdata.append((idx, data_ptr, label))
     
     def generate_estimate_subdata(self, n_samples: int = 50) -> List[Tuple[int, Dict[str, torch.Tensor], torch.Tensor]]:
-        """生成用于互信息估计的子数据
+        """Generate subset for MI estimation
         
         Args:
-            n_samples: 采样数量
+            n_samples: Number of samples
             
         Returns:
-            子数据列表
+            Subset list
         """
         n_samples = min(n_samples, len(self.data_pointer))
         indices = random.sample(range(len(self.data_pointer)), n_samples)
@@ -118,5 +126,22 @@ class DataDistributor:
     
     @property
     def n_batches(self) -> int:
-        """批次数量"""
+        """Number of batches"""
         return len(self.data_pointer)
+    
+    def verify_split(self) -> bool:
+        """Verify split correctness (total width equals original image width)
+        
+        Returns:
+            True if correct
+        """
+        image_width = self.image_height
+        total_width = sum(self.client_widths)
+        
+        if total_width == image_width:
+            print(f"✓ Split verification passed: {total_width} == {image_width}")
+            print(f"  Client width distribution: {self.client_widths}")
+            return True
+        else:
+            print(f"✗ Split verification failed: {total_width} != {image_width}")
+            return False

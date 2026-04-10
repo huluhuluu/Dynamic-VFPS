@@ -30,30 +30,30 @@ from src.evaluation import evaluate
 
 
 def main():
-    """主函数"""
-    # 解析参数
+    """Main function"""
+    # Parse arguments
     args = parse_args()
     config = Config.from_args(args)
     
-    # 设备
+    # Device
     device = get_device()
     if torch.cuda.is_available():
         print(f"[INFO] Device: {torch.cuda.get_device_name(0)} (CUDA {torch.version.cuda})")
     else:
         print(f"[INFO] Device: CPU")
     
-    # 打印配置
+    # Print configuration
     print(f"\n{'='*60}")
     print(f"Configuration: {config}")
     print(f"{'='*60}\n")
     
-    # 创建通信估算器
+    # Create communication estimator
     comm_estimator = CommunicationEstimator(
         bandwidth_mbps=config.bandwidth_mbps,
         encryption=config.encryption
     )
     
-    # 加载数据
+    # Load data
     transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.5,), (0.5,))
@@ -117,7 +117,7 @@ def main():
         print(f"  Test:  {len(testset)} samples, {len(testloader)} batches")
         print(f"  Image size: 28x28x1")
     
-    # 数据分发
+    # Data distribution
     distributor = DataDistributor(
         config.n_clients, trainloader, device, testloader,
         image_height=config.image_height,
@@ -125,13 +125,23 @@ def main():
     )
     print(f"Data distributed: {distributor.n_batches} batches, {config.n_clients} clients")
     
-    # 创建模型
+    # Verify split correctness
+    distributor.verify_split()
+    
+    # Create models
     torch.manual_seed(0)
-    input_width = config.image_height // config.n_clients  # 每个客户端的图像宽度
+    
+    # Use client width distribution from distributor
+    # Note: Different clients may have different input widths
+    # But ResNet can handle variable input sizes, and final feature dimension is the same
+    avg_input_width = sum(distributor.client_widths) // len(distributor.client_widths)
+    
+    print(f"Client width distribution: {distributor.client_widths}")
+    print(f"Average input width per client: {avg_input_width}")
     
     ClientModel, ServerModel = SplitResNet18.create_multi_client_models(
         n_clients=config.n_clients,
-        input_width=input_width,
+        input_width=avg_input_width,  # 使用平均宽度
         feature_dim=config.feature_dim,
         hidden_dim=config.hidden_dim,
         num_classes=config.num_classes,
@@ -146,48 +156,44 @@ def main():
     server_params = sum(p.numel() for p in models["server"].parameters())
     print(f"Model: Client {client_params:,} params, Server {server_params:,} params")
     
-    # 创建优化器
+    # Create optimizers
     optimizers = {f"client_{i}": optim.SGD(models[f"client_{i}"].parameters(), 
                                            lr=config.learning_rate, momentum=0.9)
                   for i in range(config.n_clients)}
     optimizers["server"] = optim.SGD(models["server"].parameters(), 
                                      lr=config.learning_rate, momentum=0.9)
     
-    # 创建 SplitNN
+    # Create SplitNN
     splitnn = SplitNN(models, config, optimizers, comm_estimator, device)
     
-    # -------------------------------------------------------------------------
-    # 训练循环
-    # -------------------------------------------------------------------------
+    # Training loop
     print(f"\n{'='*60}")
     print("[Training Started]")
     print(f"{'='*60}")
     print(f"MI Mode: {args.mi_mode}")
     
     total_train_time = 0.0
-    total_mi_compute_time = 0.0  # MI 计算时间
-    total_mi_comm_time = 0.0     # MI 通信时间
-    total_comm_time = 0.0        # 模型训练通信时间
+    total_mi_compute_time = 0.0  # MI computation time
+    total_mi_comm_time = 0.0     # MI communication time
+    total_comm_time = 0.0        # Model training communication time
     global_step = 0
     
-    # 打印数据维度信息（只在第一个 step 打印一次）
+    # Print data dimension info (only once at first step)
     dim_info_printed = False
     
-    # =========================================================================
-    # Static 模式：训练前一次性选择客户端
-    # =========================================================================
+    # Static mode: Select clients once before training
     if args.mi_mode == 'static':
         print(f"\n[Static MI Mode]")
         print(f"  MI data ratio: {args.mi_ratio}")
         
-        # 1. 从训练集取 mi_ratio 比例的数据用于 MI 计算
+        # 1. Sample mi_ratio proportion of training data for MI computation
         n_mi_batches = int(len(distributor.data_pointer) * args.mi_ratio)
         mi_indices = random.sample(range(len(distributor.data_pointer)), n_mi_batches)
         mi_data = [(idx, distributor.data_pointer[idx], distributor.labels[idx]) 
                    for idx in mi_indices]
         print(f"  MI batches: {n_mi_batches}")
         
-        # 2. 用所有 MI 数据进行组测试选择客户端
+        # 2. Perform group testing to select clients using all MI data
         scores, mi_comm_time, mi_compute_time = splitnn.group_testing(mi_data, config.n_tests)
         
         selected = [k for k, v in splitnn.selected.items() if v]
@@ -200,11 +206,9 @@ def main():
         total_mi_compute_time = mi_compute_time
         total_mi_comm_time = mi_comm_time
     
-    # =========================================================================
-    # 训练循环
-    # =========================================================================
+    # Training loop
     for epoch in range(config.epochs):
-        # 生成本轮训练数据
+        # Generate training data for this epoch
         distributor.generate_subdata(config.subset_update_prob)
         
         print(f"\n[Epoch {epoch+1}/{config.epochs}]")
@@ -212,9 +216,9 @@ def main():
         epoch_train_time = 0.0
         epoch_comm_time = 0.0
         
-        # 训练
+        # Train
         for _, data_ptr, label in distributor.subdata:
-            # Dynamic 模式：每个 step 前进行客户端选择
+            # Dynamic mode: Select clients before each step
             if args.mi_mode == 'dynamic':
                 estimate_data = distributor.generate_estimate_subdata(config.estimate_samples)
                 scores, mi_comm_time, mi_compute_time = splitnn.group_testing(estimate_data, config.n_tests)
@@ -262,17 +266,17 @@ def main():
             total_train_time += train_time
             total_comm_time += comm_time
             
-            # 定期评估
+            # Periodic evaluation
             if global_step % config.eval_every_steps == 0:
                 acc = evaluate(splitnn, distributor.test_set[:10], device)
                 
-                # 整体累计时间
+                # Total accumulated time
                 overall_total_time = (total_train_time + total_comm_time + 
                                      total_mi_compute_time + total_mi_comm_time)
                 
                 print(f"  Step {global_step:4d} | Selected: {selected} | Loss: {loss:.4f} | Acc: {acc*100:5.2f}%")
                 
-                # Dynamic 模式显示每步的 MI 时间
+                # Dynamic mode: Show MI time for each step
                 if args.mi_mode == 'dynamic':
                     print(f"         Step: {train_time + comm_time + mi_compute_time + mi_comm_time:.3f}s")
                     print(f"           - Train: {train_time:.3f}s")
@@ -290,9 +294,7 @@ def main():
                 print(f"           - MI Compute: {total_mi_compute_time:.2f}s")
                 print(f"           - MI Comm: {total_mi_comm_time:.2f}s")
     
-    # -------------------------------------------------------------------------
-    # 最终评估
-    # -------------------------------------------------------------------------
+    # Final evaluation
     print(f"\n{'='*60}")
     print("[Final Evaluation]")
     print(f"{'='*60}")

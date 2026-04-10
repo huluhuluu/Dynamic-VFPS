@@ -1,5 +1,5 @@
 """
-Simulation-VFPS 源码包
+Simulation-VFPS Source Package
 """
 
 from .config import Config

@@ -1,5 +1,5 @@
 """
-工具函数模块
+Utility Functions Module
 """
 
 import argparse
@@ -8,13 +8,13 @@ import torch
 
 
 def digamma(x: float) -> float:
-    """Digamma 函数 (Gamma 函数的对数导数)
+    """Digamma function (logarithmic derivative of Gamma function)
     
     Args:
-        x: 输入值
+        x: Input value
         
     Returns:
-        Digamma 函数值
+        Digamma function value
     """
     if x == 0:
         return float('-inf')
@@ -22,39 +22,39 @@ def digamma(x: float) -> float:
 
 
 def get_device() -> torch.device:
-    """获取计算设备
+    """Get computation device
     
     Returns:
-        torch.device: CUDA 设备（如果可用）否则返回 CPU
+        torch.device: CUDA device if available, otherwise CPU
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     return device
 
 
 def parse_args() -> argparse.Namespace:
-    """解析命令行参数
+    """Parse command line arguments
     
     Returns:
-        解析后的参数命名空间
+        Parsed arguments namespace
     """
     parser = argparse.ArgumentParser(description='Dynamic-VFPS GPU Test')
     
-    # 数据集参数
+    # Dataset parameters
     parser.add_argument('--dataset', type=str, default='fashion-mnist',
                        choices=['fashion-mnist', 'cifar-10'],
                        help='Dataset to use: fashion-mnist or cifar-10')
     
-    # 训练参数
+    # Training parameters
     parser.add_argument('--epochs', type=int, default=50, help='Number of epochs')
     parser.add_argument('--lr', type=float, default=0.001, help='Learning rate')
     parser.add_argument('--batch-size', type=int, default=256, help='Batch size')
     parser.add_argument('--local-epochs', type=int, default=1, help='Local iterations per batch')
     
-    # 客户端参数
+    # Client parameters
     parser.add_argument('--clients', type=int, default=10, help='Number of clients')
     parser.add_argument('--selected', type=int, default=6, help='Number of selected clients')
     
-    # MI 估计参数
+    # MI estimation parameters
     parser.add_argument('--n-tests', type=int, default=5, help='Number of group tests')
     parser.add_argument('--k-nn', type=int, default=3, help='KNN k value')
     parser.add_argument('--mi-mode', type=str, default='dynamic',
@@ -63,10 +63,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--mi-ratio', type=float, default=1/9,
                        help='Ratio of training data for MI estimation (static mode)')
     
-    # 通信参数
+    # Communication parameters
     parser.add_argument('--bandwidth', type=int, default=300, help='Bandwidth in Mbps')
     
-    # 加密参数
+    # Encryption parameters
     parser.add_argument('--encryption', type=str, default='plaintext',
                        choices=['plaintext', 'paillier', 'tenseal'],
                        help='Encryption method')

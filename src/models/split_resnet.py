@@ -70,11 +70,12 @@ class MultiClientNet(nn.Module):
     - 垂直分割按列进行，每个客户端收到 heightx(width) 的图像
     - 直接使用完整的 ResNet18
     - 输入: (batch, height, width) 或 (batch, height*width)
+    - 支持不等宽输入（不同客户端可能有不同宽度）
     """
     
     def __init__(self, input_width=4, feature_dim=256, input_height=28, in_channel=1):
         super(MultiClientNet, self).__init__()
-        self.input_width = input_width
+        self.input_width = input_width  # 仅用于参考，实际宽度由输入决定
         self.input_height = input_height
         self.in_channel = in_channel
         self.feature_dim = feature_dim
@@ -84,10 +85,18 @@ class MultiClientNet(nn.Module):
         self.resnet18 = ResNet(ResidualBlock, num_classes=feature_dim, in_channel=in_channel)
     
     def forward(self, x):
-        # 参考 vflweight 的处理方式
-        # 输入: (batch, height, width) 或 (batch, height*width) 
-        # 输出: (batch, in_channel, height, width) 供 ResNet18 使用
-        x = x.view(x.shape[0], self.in_channel, self.input_height, -1)
+        # 动态计算输入宽度（支持不等宽输入）
+        # 输入: (batch, height*width) 或 (batch, in_channel, height, width)
+        batch_size = x.shape[0]
+        if x.dim() == 2:
+            # (batch, height*width) -> (batch, in_channel, height, width)
+            # 自动计算宽度
+            total_elements = x.shape[1]
+            width = total_elements // (self.in_channel * self.input_height)
+            x = x.view(batch_size, self.in_channel, self.input_height, width)
+        else:
+            # 已经是 (batch, in_channel, height, width) 格式
+            pass
         x = self.resnet18(x)
         return x
 
@@ -198,8 +207,13 @@ class SplitResNet18:
                 self.resnet18 = ResNet(ResidualBlock, num_classes=feature_dim, in_channel=in_channel)
             
             def forward(self, x):
+                # 动态计算输入宽度（支持不等宽输入）
                 # 输入: (batch, height*width) -> 输出: (batch, in_channel, height, width)
-                x = x.view(x.shape[0], self.in_channel, self.input_height, -1)
+                batch_size = x.shape[0]
+                if x.dim() == 2:
+                    total_elements = x.shape[1]
+                    width = total_elements // (self.in_channel * self.input_height)
+                    x = x.view(batch_size, self.in_channel, self.input_height, width)
                 x = self.resnet18(x)
                 return x
         

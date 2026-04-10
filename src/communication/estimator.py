@@ -1,5 +1,5 @@
 """
-通信时间估算器
+Communication Time Estimator
 """
 
 import sys
@@ -11,20 +11,18 @@ from typing import Dict, Tuple
 
 
 class CommunicationEstimator:
-    """通信时间估算器
+    """Communication time estimator
     
-    使用字典缓存不同张量大小的加密结果：
-        {tensor_numel: (encrypt_time, ciphertext_bytes)}
-    
-    第一次遇到新大小时进行性能测量，后续请求返回缓存值。
+    Uses dict to cache encryption results for different tensor sizes.
+    First time measures performance, subsequent requests return cached values.
     """
     
     def __init__(self, bandwidth_mbps: float = 300, encryption: str = 'plaintext'):
-        """初始化估算器
+        """Initialize estimator
         
         Args:
-            bandwidth_mbps: 带宽（Mbps）
-            encryption: 加密方式 ('plaintext', 'paillier', 'tenseal')
+            bandwidth_mbps: Bandwidth in Mbps
+            encryption: Encryption method ('plaintext', 'paillier', 'tenseal')
         """
         self.bandwidth_bps = bandwidth_mbps * 1e6
         self.encryption = encryption
@@ -36,31 +34,31 @@ class CommunicationEstimator:
         self.total_bytes = 0
     
     def _profile_encrypt(self, numel: int) -> Tuple[float, int]:
-        """测量加密基线，返回 (encrypt_time, ciphertext_bytes)
+        """Measure encryption baseline, return (encrypt_time, ciphertext_bytes)
         
         Args:
-            numel: 张量元素数量
+            numel: Number of tensor elements
             
         Returns:
-            (加密时间, 密文字节数)
+            (encryption time, ciphertext bytes)
         """
         if numel in self._profile_cache:
             return self._profile_cache[numel]
         
         if self.encryption == 'plaintext':
-            # 明文：无加密时间，密文大小 = 明文大小
+            # Plaintext: no encryption time, ciphertext size = plaintext size
             plaintext_bytes = numel * 4  # float32
             self._profile_cache[numel] = (0.0, plaintext_bytes)
             return self._profile_cache[numel]
         
-        # 实际测量
+        # Actual measurement
         sample_tensor = torch.randn(numel, dtype=torch.float32)
         plaintext_bytes = sample_tensor.element_size() * sample_tensor.numel()
         
         print(f"[Profile] Measuring {self.encryption} for numel={numel}...")
         
         try:
-            # 抑制警告输出
+            # Suppress warnings
             old_stderr = sys.stderr
             sys.stderr = io.StringIO()
             
@@ -96,7 +94,7 @@ class CommunicationEstimator:
             
         except Exception as e:
             print(f"[Profile] Failed: {e}, using fallback values")
-            # 回退值
+            # Fallback values
             if self.encryption == 'paillier':
                 encrypt_time = plaintext_bytes * 2.6e-6
                 ciphertext_bytes = int(plaintext_bytes * 139.5)
@@ -111,10 +109,10 @@ class CommunicationEstimator:
         return encrypt_time, ciphertext_bytes
     
     def estimate_encrypted(self, tensor: torch.Tensor) -> float:
-        """估算加密传输时间（客户端选择阶段）
+        """Estimate encrypted transmission time (client selection phase)
         
         Args:
-            tensor: 要传输的张量
+            tensor: Tensor to transmit
             
         Returns:
             encryption_time + expanded_communication_time
@@ -122,19 +120,19 @@ class CommunicationEstimator:
         numel = tensor.numel()
         encrypt_time, ciphertext_bytes = self._profile_encrypt(numel)
         
-        # 传输时间
+        # Transmission time
         transfer_time = ciphertext_bytes * 8 / self.bandwidth_bps
         
-        # 累计数据量
+        # Accumulate data volume
         self.total_bytes += ciphertext_bytes
         
         return encrypt_time + transfer_time
     
     def estimate_plaintext(self, tensor: torch.Tensor) -> float:
-        """估算明文传输时间（模型训练阶段）
+        """Estimate plaintext transmission time (model training phase)
         
         Args:
-            tensor: 要传输的张量
+            tensor: Tensor to transmit
             
         Returns:
             plaintext_communication_time
@@ -142,15 +140,15 @@ class CommunicationEstimator:
         numel = tensor.numel()
         plaintext_bytes = numel * tensor.element_size()
         
-        # 传输时间
+        # Transmission time
         transfer_time = plaintext_bytes * 8 / self.bandwidth_bps
         
-        # 累计数据量
+        # Accumulate data volume
         self.total_bytes += plaintext_bytes
         
         return transfer_time
     
     @property
     def total_data_mb(self) -> float:
-        """累计传输数据量（MB）"""
+        """Total transmitted data in MB"""
         return self.total_bytes / (1024 * 1024)

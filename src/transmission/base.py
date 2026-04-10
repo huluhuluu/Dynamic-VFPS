@@ -1,5 +1,5 @@
 """
-加密传输基类
+Encryption Transmission Base Class
 """
 
 from abc import ABC, abstractmethod
@@ -11,11 +11,11 @@ import time
 
 @dataclass
 class TransmissionConfig:
-    """传输配置"""
+    """Transmission configuration"""
     method: str = 'plaintext'  # 'plaintext', 'paillier', 'tenseal'
-    key_size: int = 2048       # 密钥大小 (Paillier)
-    poly_modulus_degree: int = 8192  # 多项式模数次数 (CKKS)
-    coeff_mod_bit_sizes: list = None  # 系数模数位大小 (CKKS)
+    key_size: int = 2048       # Key size (Paillier)
+    poly_modulus_degree: int = 8192  # Polynomial modulus degree (CKKS)
+    coeff_mod_bit_sizes: list = None  # Coefficient modulus bit sizes (CKKS)
     
     def __post_init__(self):
         if self.coeff_mod_bit_sizes is None:
@@ -23,7 +23,7 @@ class TransmissionConfig:
 
 
 class BaseTransmission(ABC):
-    """加密传输基类"""
+    """Encryption transmission base class"""
     
     def __init__(self, config: TransmissionConfig = None):
         self.config = config or TransmissionConfig()
@@ -33,56 +33,53 @@ class BaseTransmission(ABC):
     
     @abstractmethod
     def encrypt_tensor(self, tensor: torch.Tensor) -> Any:
-        """
-        加密张量
+        """Encrypt tensor
         
         Args:
-            tensor: 要加密的张量
+            tensor: Tensor to encrypt
             
         Returns:
-            加密后的数据
+            Encrypted data
         """
         pass
     
     @abstractmethod
     def decrypt_tensor(self, encrypted_data: Any) -> torch.Tensor:
-        """
-        解密张量
+        """Decrypt tensor
         
         Args:
-            encrypted_data: 加密的数据
+            encrypted_data: Encrypted data
             
         Returns:
-            解密后的张量
+            Decrypted tensor
         """
         pass
     
     def transmit(self, tensor: torch.Tensor, simulate_delay: float = 0.0) -> Tuple[torch.Tensor, dict]:
-        """
-        传输张量（加密 -> 传输 -> 解密）
+        """Transmit tensor (encrypt -> transmit -> decrypt)
         
         Args:
-            tensor: 要传输的张量
-            simulate_delay: 模拟网络延迟（秒）
+            tensor: Tensor to transmit
+            simulate_delay: Simulated network delay (seconds)
             
         Returns:
-            (解密后的张量, 时间统计字典)
+            (decrypted tensor, timing statistics dict)
         """
         timings = {}
         
-        # 加密
+        # Encrypt
         t0 = time.time()
         encrypted = self.encrypt_tensor(tensor)
         timings['encrypt_time'] = time.time() - t0
         self.encrypt_time += timings['encrypt_time']
         
-        # 模拟传输延迟
+        # Simulate transmission delay
         if simulate_delay > 0:
             time.sleep(simulate_delay)
         timings['transfer_time'] = simulate_delay
         self.transfer_time += timings['transfer_time']
         
-        # 解密
+        # Decrypt
         t0 = time.time()
         decrypted = self.decrypt_tensor(encrypted)
         timings['decrypt_time'] = time.time() - t0
@@ -93,7 +90,7 @@ class BaseTransmission(ABC):
         return decrypted, timings
     
     def get_stats(self) -> dict:
-        """获取统计信息"""
+        """Get statistics"""
         return {
             'encrypt_time': self.encrypt_time,
             'decrypt_time': self.decrypt_time,
@@ -102,7 +99,7 @@ class BaseTransmission(ABC):
         }
     
     def reset_stats(self):
-        """重置统计信息"""
+        """Reset statistics"""
         self.encrypt_time = 0.0
         self.decrypt_time = 0.0
         self.transfer_time = 0.0

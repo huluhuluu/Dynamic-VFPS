@@ -1,5 +1,5 @@
 """
-通信模块
+Communication Module
 """
 
 from .estimator import CommunicationEstimator
