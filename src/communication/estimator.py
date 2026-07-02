@@ -33,11 +33,12 @@ class CommunicationEstimator:
         # Accumulated data volume
         self.total_bytes = 0
     
-    def _profile_encrypt(self, numel: int) -> Tuple[float, int]:
+    def _profile_encrypt(self, numel: int, bytes_per_element: int = 4) -> Tuple[float, int]:
         """Measure encryption baseline, return (encrypt_time, ciphertext_bytes)
         
         Args:
             numel: Number of tensor elements
+            bytes_per_element: Bytes per element in plaintext (1 for uint8, 4 for float32)
             
         Returns:
             (encryption time, ciphertext bytes)
@@ -47,13 +48,13 @@ class CommunicationEstimator:
         
         if self.encryption == 'plaintext':
             # Plaintext: no encryption time, ciphertext size = plaintext size
-            plaintext_bytes = numel * 4  # float32
+            plaintext_bytes = numel * bytes_per_element
             self._profile_cache[numel] = (0.0, plaintext_bytes)
             return self._profile_cache[numel]
         
-        # Actual measurement
+        # Actual measurement (use float32 tensor, encryption time depends on numel not bytes_per_element)
         sample_tensor = torch.randn(numel, dtype=torch.float32)
-        plaintext_bytes = sample_tensor.element_size() * sample_tensor.numel()
+        plaintext_bytes = numel * bytes_per_element
         
         print(f"[Profile] Measuring {self.encryption} for numel={numel}...")
         
@@ -108,17 +109,18 @@ class CommunicationEstimator:
         self._profile_cache[numel] = (encrypt_time, ciphertext_bytes)
         return encrypt_time, ciphertext_bytes
     
-    def estimate_encrypted(self, tensor: torch.Tensor) -> float:
-        """Estimate encrypted transmission time (client selection phase)
+    def estimate_encrypted(self, tensor: torch.Tensor, bytes_per_element: int = 4) -> float:
+        """Estimate encrypted transmission time
         
         Args:
             tensor: Tensor to transmit
+            bytes_per_element: Bytes per element in plaintext (1 for uint8/raw images, 4 for float32/features)
             
         Returns:
             encryption_time + expanded_communication_time
         """
         numel = tensor.numel()
-        encrypt_time, ciphertext_bytes = self._profile_encrypt(numel)
+        encrypt_time, ciphertext_bytes = self._profile_encrypt(numel, bytes_per_element)
         
         # Transmission time
         transfer_time = ciphertext_bytes * 8 / self.bandwidth_bps

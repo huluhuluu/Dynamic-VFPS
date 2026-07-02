@@ -259,7 +259,7 @@ class SplitNN:
         """
         self.scores = {f"client_{i}": 0.0 for i in range(self.config.n_clients)}
         
-        # 1. Calculate encrypted communication time for all data
+        # 1. Calculate encrypted communication time for all data (raw images, uint8)
         # Each batch: all clients send in parallel, take max
         # Total time: sum of all batch communication times
         batch_comm_times = []
@@ -267,7 +267,8 @@ class SplitNN:
             client_times = []
             for i in range(self.config.n_clients):
                 client_id = f"client_{i}"
-                t = self.comm_estimator.estimate_encrypted(data_ptr[client_id])
+                # Raw images are uint8 (1 byte/pixel), not float32 features
+                t = self.comm_estimator.estimate_encrypted(data_ptr[client_id], bytes_per_element=1)
                 client_times.append(t)
             # Batch communication time = max (parallel transmission)
             batch_comm_times.append(max(client_times) if client_times else 0.0)
